@@ -1,6 +1,54 @@
 import { useState } from "react";
 
 const API_BASE = "http://localhost:8000";
+const TRUNCATE_AT = 25;
+
+function TruncatedCell({ text, onShowMore }) {
+  if (!text) return <span>-</span>;
+  if (text.length <= TRUNCATE_AT) return <span>{text}</span>;
+  return (
+    <span>
+      {text.slice(0, TRUNCATE_AT)}
+      <button
+        onClick={onShowMore}
+        style={{
+          border: "none", background: "none", color: "#0060df",
+          cursor: "pointer", padding: 0, marginLeft: 2, font: "inherit",
+        }}
+      >
+        ...show more
+      </button>
+    </span>
+  );
+}
+
+function TextModal({ title, text, onClose }) {
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)",
+        display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "white", borderRadius: 6, padding: "1.25rem",
+          maxWidth: "700px", maxHeight: "80vh", overflow: "auto", width: "90%",
+        }}
+      >
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.75rem" }}>
+          <strong>{title}</strong>
+          <button onClick={onClose} style={{ cursor: "pointer" }}>Close</button>
+        </div>
+        <pre style={{ whiteSpace: "pre-wrap", wordBreak: "break-word", fontSize: "0.8rem", margin: 0 }}>
+          {text}
+        </pre>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [file, setFile] = useState(null);
@@ -11,6 +59,7 @@ export default function App() {
   const [latencyMs, setLatencyMs] = useState(null);
   const [selected, setSelected] = useState(new Set());
   const [letterNote, setLetterNote] = useState(null);
+  const [modal, setModal] = useState(null);
 
   async function handleAnalyze() {
     if (!file) return;
@@ -130,6 +179,8 @@ export default function App() {
                 <th>Criterion</th>
                 <th>Reason</th>
                 <th>Urgent</th>
+                <th>LLM Input</th>
+                <th>LLM Output</th>
               </tr>
             </thead>
             <tbody>
@@ -150,12 +201,30 @@ export default function App() {
                   <td>{r.criterion || "-"}</td>
                   <td>{r.reason}</td>
                   <td>{r.urgent ? "yes" : ""}</td>
+                  <td>
+                    <TruncatedCell
+                      text={r.llm_input}
+                      onShowMore={() =>
+                        setModal({ title: `LLM input - request #${r.request_id}`, text: r.llm_input })
+                      }
+                    />
+                  </td>
+                  <td>
+                    <TruncatedCell
+                      text={r.llm_output}
+                      onShowMore={() =>
+                        setModal({ title: `LLM output - request #${r.request_id}`, text: r.llm_output })
+                      }
+                    />
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </>
       )}
+
+      {modal && <TextModal title={modal.title} text={modal.text} onClose={() => setModal(null)} />}
     </div>
   );
 }

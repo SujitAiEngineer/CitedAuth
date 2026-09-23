@@ -127,12 +127,14 @@ def decide(state: GraphState) -> dict:
         )
     except Exception as e:
         latency_ms = (time.perf_counter() - start) * 1000
-        _log_llm_call(label, call_input, f"<call failed: {e}>", {"input_tokens": 0, "output_tokens": 0}, latency_ms)
+        output_text = f"<call failed: {e}>"
+        _log_llm_call(label, call_input, output_text, {"input_tokens": 0, "output_tokens": 0}, latency_ms)
         return {
             "result": DeterminationResult(
                 request_id=req.request_id, member_id=req.member_id, procedure=req.procedure,
                 requesting_provider=req.requesting_provider,
                 determination="needs-info", reason="Automated review timed out or failed; manual review required.",
+                llm_input=call_input, llm_output=output_text,
             ),
             "usage": {"input_tokens": 0, "output_tokens": 0},
         }
@@ -149,6 +151,7 @@ def decide(state: GraphState) -> dict:
                 request_id=req.request_id, member_id=req.member_id, procedure=req.procedure,
                 requesting_provider=req.requesting_provider,
                 determination="needs-info", reason="Automated review declined to answer; manual review required.",
+                llm_input=call_input, llm_output=output_text,
             ),
             "usage": usage,
         }
@@ -157,6 +160,7 @@ def decide(state: GraphState) -> dict:
         result = DeterminationResult(
             request_id=req.request_id, member_id=req.member_id, procedure=req.procedure,
             requesting_provider=req.requesting_provider,
+            llm_input=call_input, llm_output=output_text,
             **tool_use.input,
         )
     except ValidationError:
@@ -164,6 +168,7 @@ def decide(state: GraphState) -> dict:
             request_id=req.request_id, member_id=req.member_id, procedure=req.procedure,
             requesting_provider=req.requesting_provider,
             determination="needs-info", reason="Automated determination could not be parsed; manual review required.",
+            llm_input=call_input, llm_output=output_text,
         )
     return {"result": result, "usage": usage}
 

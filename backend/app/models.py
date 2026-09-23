@@ -26,6 +26,8 @@ class DeterminationResult(BaseModel):
     criterion: Optional[str] = None
     reason: str
     urgent: bool = False
+    llm_input: str = ""
+    llm_output: str = ""
 
 
 class TokenUsage(BaseModel):
