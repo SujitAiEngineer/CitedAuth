@@ -7,3 +7,6 @@ dist/
 scratch/
 backend/data/*
 !backend/data/.gitkeep
+!backend/data/policy_criteria.md
+!backend/data/knowledge.md
+!backend/data/prior_auth_requests.xlsx

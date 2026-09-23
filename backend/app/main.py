@@ -5,14 +5,20 @@ Nothing domain specific lives here. Add routers under backend/app/ as needed.
 import os
 import json
 import asyncio
+import time
 from typing import Optional
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel
 from anthropic import Anthropic
+
+from backend.app.agents.graph import decide_row, summarize_reason
+from backend.app.models import AnalyzeResponse, DeterminationResult, TokenUsage
+from backend.app.tools.pdf_letter import build_letters_pdf
+from backend.app.tools.xlsx_io import parse_requests
 
 load_dotenv()
 
@@ -104,6 +110,61 @@ async def chat_stream(req: ChatRequest):
             yield f"data: {json.dumps({'done': True, 'usage': usage})}\n\n"
 
     return StreamingResponse(generate(), media_type="text/event-stream")
+
+
+@app.post("/api/analyze", response_model=AnalyzeResponse)
+async def analyze(file: UploadFile = File(...)):
+    """
+    One LLM call per row via the decide graph (backend/app/agents/graph.py).
+    guardrail_check (the deterministic absence-vs-negation post-check) isn't
+    wired in yet -- treat these as pre-guardrail determinations for now.
+    """
+    contents = await file.read()
+    try:
+        requests = parse_requests(contents)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    start = time.perf_counter()
+    results = []
+    total_input = 0
+    total_output = 0
+    for r in requests:
+        result, usage, latency_ms = decide_row(r)
+        total_input += usage["input_tokens"]
+        total_output += usage["output_tokens"]
+        results.append(result)
+    total_latency_ms = (time.perf_counter() - start) * 1000
+
+    return AnalyzeResponse(
+        results=results,
+        usage=TokenUsage(input_tokens=total_input, output_tokens=total_output),
+        latency_ms=total_latency_ms,
+    )
+
+
+@app.post("/api/letters/generate")
+async def generate_letters(results: list[DeterminationResult]):
+    """
+    One summarize_reason LLM call per selected row (prose for the letter
+    body), then a deterministic PDF render (backend/app/tools/pdf_letter.py).
+    No backend persistence -- the frontend sends back the rows it already
+    has from /api/analyze, filtered to the checked ones.
+    """
+    if not results:
+        raise HTTPException(status_code=400, detail="No rows selected.")
+
+    items = []
+    for r in results:
+        letter_text, _usage = summarize_reason(r)
+        items.append((r, letter_text))
+
+    pdf_bytes = build_letters_pdf(items)
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": "attachment; filename=prior_auth_letters.pdf"},
+    )
 
 
 @app.post("/api/run")
